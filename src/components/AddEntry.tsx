@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { plainNumber, rupees, shortAmount, todayIso } from "@/lib/format";
+import Loader from "./Loader";
 import type { ZakatYear } from "@/lib/types";
 
 const DENOMINATIONS = [5000, 10000, 15000, 20000, 50000, 100000];
@@ -75,7 +76,7 @@ export default function AddEntry({
   }
 
   const dateAndNote = (idPrefix: string) => (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div>
         <label className="label" htmlFor={`${idPrefix}-date`}>
           Date given
@@ -176,7 +177,7 @@ export default function AddEntry({
           onClick={commit}
           disabled={busy}
         >
-          {busy ? "Saving…" : "Record entry"}
+          {busy ? <Loader variant="inline" /> : "Record entry"}
         </button>
       </div>
 
@@ -221,7 +222,7 @@ export default function AddEntry({
             onClick={commit}
             disabled={busy}
           >
-            {busy ? "Saving…" : "Record entry"}
+            {busy ? <Loader variant="inline" /> : "Record entry"}
           </button>
           <button
             type="button"

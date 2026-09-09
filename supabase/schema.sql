@@ -12,6 +12,7 @@ create extension if not exists pgcrypto;
 create table if not exists public.profiles (
   id                 uuid primary key references auth.users on delete cascade,
   username           citext not null unique,
+  display_name       text,
   default_due_amount numeric(14,2) not null default 0,
   year_start         date,
   sheet_id           text,
@@ -50,6 +51,7 @@ create table if not exists public.payments (
   amount      numeric(14,2) not null check (amount > 0),
   paid_on     date not null default current_date,
   description text,
+  device      text,
   created_at  timestamptz not null default now()
 );
 
@@ -69,8 +71,10 @@ language plpgsql
 security definer set search_path = public
 as $$
 begin
-  insert into public.profiles (id, username)
-  values (new.id, lower(new.raw_user_meta_data->>'username'));
+  insert into public.profiles (id, username, display_name)
+  values (new.id,
+          lower(new.raw_user_meta_data->>'username'),
+          nullif(new.raw_user_meta_data->>'display_name', ''));
   return new;
 end;
 $$;

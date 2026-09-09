@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import ThemeToggle from "@/components/ThemeToggle";
+import Loader from "@/components/Loader";
 import { emailFor } from "@/lib/types";
 
 export default function Login() {
@@ -37,8 +38,8 @@ export default function Login() {
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-[26rem] flex-col justify-center px-5 py-12">
-      <div className="absolute right-5 top-5"><ThemeToggle /></div>
+    <main className="page page--auth">
+      <div className="theme-corner"><ThemeToggle /></div>
       <h1 className="font-medium tracking-tight text-[2.1rem] leading-tight">Zakat Tracker</h1>
       <p className="mt-2 text-[15px] leading-relaxed text-muted">
         Sign in to pick up where your ledger left off.
@@ -83,7 +84,7 @@ export default function Login() {
         )}
 
         <button type="submit" className="btn btn--solid w-full" disabled={busy}>
-          {busy ? "Signing in…" : "Sign in"}
+          {busy ? <Loader variant="inline" /> : "Sign in"}
         </button>
       </form>
 

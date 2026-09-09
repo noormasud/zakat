@@ -5,12 +5,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import type { Payment, Profile, ZakatYear } from "@/lib/types";
-import { rupees, plainNumber, longDate, todayIso } from "@/lib/format";
+import { rupees, plainNumber, longDate, yearRange, yearTag, todayIso } from "@/lib/format";
 import { downloadWorkbook } from "@/lib/excel";
+import { describeDevice } from "@/lib/device";
 import YearMeter from "@/components/YearMeter";
 import AddEntry from "@/components/AddEntry";
 import EntryList from "@/components/EntryList";
 import ThemeToggle from "@/components/ThemeToggle";
+import Loader from "@/components/Loader";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -43,7 +45,7 @@ export default function Dashboard() {
 
     const [{ data: yrs }, { data: pays }] = await Promise.all([
       supabase.from("zakat_years").select("*").order("year_number", { ascending: false }),
-      supabase.from("payments").select("*").order("paid_on", { ascending: false }),
+      supabase.from("payments").select("*").order("created_at", { ascending: false }),
     ]);
 
     setYears((yrs ?? []) as ZakatYear[]);
@@ -64,7 +66,11 @@ export default function Dashboard() {
   const isClosed = !!selected && selected.end_date < today;
 
   const yearPayments = useMemo(
-    () => payments.filter((p) => p.year_id === selected?.id),
+    () =>
+      payments
+        .filter((p) => p.year_id === selected?.id)
+        // Newest entry first, so whatever you just recorded is at the top.
+        .sort((a, b) => b.created_at.localeCompare(a.created_at)),
     [payments, selected]
   );
   const given = yearPayments.reduce((sum, p) => sum + Number(p.amount), 0);
@@ -77,9 +83,15 @@ export default function Dashboard() {
     if (!selected || !profile) return;
     const { data, error } = await supabase
       .from("payments")
-      .insert({ ...entry, year_id: selected.id, user_id: profile.id })
+      .insert({
+        ...entry,
+        year_id: selected.id,
+        user_id: profile.id,
+        device: describeDevice(),
+      })
       .select()
       .single();
+
     if (!error && data) setPayments((prev) => [data as Payment, ...prev]);
   }
 
@@ -106,7 +118,7 @@ export default function Dashboard() {
   function exportExcel() {
     if (!profile) return;
     downloadWorkbook(
-      profile.username,
+      profile.display_name || profile.username,
       [...years]
         .sort((a, b) => a.year_number - b.year_number)
         .map((year) => ({
@@ -120,27 +132,42 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <main className="mx-auto max-w-[34rem] px-5 py-16">
-        <p className="text-[15px] text-muted">Opening your ledger…</p>
-      </main>
+      <main><Loader /></main>
     );
   }
 
   if (profile && !profile.year_start) {
-    return <Onboarding username={profile.username} onDone={load} />;
+    return (
+      <Onboarding who={profile.display_name || profile.username} onDone={load} />
+    );
   }
 
   return (
-    <main className="mx-auto w-full max-w-[34rem] px-5 pb-24 pt-6">
-      <header className="flex items-center justify-between">
-        <p className="text-[15px] font-semibold">{profile?.username}</p>
-        <nav className="flex items-center gap-4 text-[13px] text-muted">
+    <main className="page">
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-[17px] font-medium sm:text-[18px]">
+            {profile?.display_name || profile?.username}
+          </p>
+          {selected && (
+            <p className="mt-0.5 text-[11px] text-muted sm:text-[12px]">
+              Zakat year · {yearRange(selected.start_date, selected.end_date)}
+            </p>
+          )}
+        </div>
+        <nav className="flex shrink-0 items-center gap-3.5 text-[13px] text-muted">
           <ThemeToggle />
           <button onClick={exportExcel} className="hover:text-ink">
             Export
           </button>
-          <Link href="/settings" className="hover:text-ink">
-            Settings
+          <Link
+            href="/settings"
+            aria-label="Settings"
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-line bg-raised text-[12px] font-medium text-ink"
+          >
+            {(profile?.display_name || profile?.username || "?")
+              .charAt(0)
+              .toUpperCase()}
           </Link>
         </nav>
       </header>
@@ -157,8 +184,8 @@ export default function Dashboard() {
               : `${rolledOver} Zakat years have passed since you last checked in.`}
           </p>
           <p className="mt-1 text-[14px] leading-relaxed text-muted">
-            Year {currentYear?.year_number} runs to {longDate(currentYear?.end_date ?? "")}.
-            Last year&rsquo;s record is kept exactly as it closed.
+            Your new year runs to {longDate(currentYear?.end_date ?? "")}. The
+            year before is kept exactly as it closed.
           </p>
           <button
             onClick={() => setRolledOver(0)}
@@ -182,7 +209,7 @@ export default function Dashboard() {
           >
             {years.map((y) => (
               <option key={y.id} value={y.id}>
-                Year {y.year_number} — {longDate(y.start_date)} to {longDate(y.end_date)}
+                {yearTag(y.start_date, y.end_date)} — {yearRange(y.start_date, y.end_date)}
                 {y.id === currentYear?.id ? " (current)" : ""}
               </option>
             ))}
@@ -265,10 +292,10 @@ export default function Dashboard() {
 /* ------------------------------------------------------------------ */
 
 function Onboarding({
-  username,
+  who,
   onDone,
 }: {
-  username: string;
+  who: string;
   onDone: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
@@ -288,9 +315,9 @@ function Onboarding({
   }
 
   return (
-    <main className="mx-auto w-full max-w-[30rem] px-5 py-12">
+    <main className="page page--auth">
       <h1 className="font-medium tracking-tight text-[2rem] leading-tight">
-        Set up your Zakat year, {username}
+        Set up your Zakat year, {who}
       </h1>
       <p className="mt-2 text-[15px] leading-relaxed text-muted">
         Two things and you are done. Both can be adjusted later.
@@ -331,7 +358,7 @@ function Onboarding({
         </div>
 
         <button className="btn btn--solid w-full" onClick={begin} disabled={busy}>
-          {busy ? "Setting up…" : "Open my ledger"}
+          {busy ? <Loader variant="inline" /> : "Open my ledger"}
         </button>
       </div>
     </main>

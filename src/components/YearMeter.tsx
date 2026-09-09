@@ -1,6 +1,6 @@
 "use client";
 
-import { rupees, longDate, daysLeft } from "@/lib/format";
+import { rupees, daysLeft } from "@/lib/format";
 import type { ZakatYear } from "@/lib/types";
 
 export default function YearMeter({
@@ -29,7 +29,7 @@ export default function YearMeter({
       </p>
 
       <p
-        className="tabular mt-0.5 text-[2.4rem] font-medium leading-[1.05] tracking-tight sm:text-[3rem]"
+        className="tabular hero mt-0.5 font-medium leading-[1.05] tracking-tight"
         style={{ color: done ? "var(--ok)" : "var(--fg)" }}
       >
         {rupees(done ? given : Math.max(0, remaining))}
@@ -41,8 +41,6 @@ export default function YearMeter({
           : due > 0
           ? `of ${rupees(due)} due`
           : "Set the amount due below"}
-        {" · year "}
-        {year.year_number}
       </p>
 
       <div className="mt-4">
@@ -59,15 +57,14 @@ export default function YearMeter({
         </div>
       </div>
 
-      <p className="mt-3 text-[12px] text-muted">
-        {longDate(year.start_date)} to {longDate(year.end_date)}
-        {isCurrent && (
-          <span style={{ color: left <= 30 ? "var(--pend)" : "inherit" }}>
-            {" · "}
-            {left <= 0 ? "ends today" : `${left} days left`}
-          </span>
-        )}
-      </p>
+      {isCurrent && (
+        <p
+          className="mt-3 text-[12px]"
+          style={{ color: left <= 30 ? "var(--pend)" : "var(--dim)" }}
+        >
+          {left <= 0 ? "This year ends today" : `${left} days left in this year`}
+        </p>
+      )}
 
       {done && given > due && (
         <p className="tabular mt-2 text-[13px]" style={{ color: "var(--ok)" }}>

@@ -186,3 +186,134 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---- loading ---------------------------------------------------- */
+
+.loader {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+}
+/* Fills the viewport so the mark sits dead centre regardless of the
+   wrapper it is dropped into. */
+.loader--page {
+  min-height: 100dvh;
+  padding: 0 20px;
+}
+
+.loader__mark {
+  font-size: clamp(22px, 6vw, 28px);
+}
+
+.loader__mark {
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+  animation: mark-in 500ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--dim);
+}
+.dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  /* currentColor so the dots stay legible on a solid button, where the
+     surrounding text is --bg rather than --fg */
+  background: currentColor;
+  animation: bob 1.25s ease-in-out infinite;
+}
+.dots span:nth-child(2) { animation-delay: 0.16s; }
+.dots span:nth-child(3) { animation-delay: 0.32s; }
+
+/* Inline: dots only, sized to sit inside a button or beside text */
+.dots--sm {
+  gap: 5px;
+  color: inherit;
+  vertical-align: middle;
+}
+.dots--sm span {
+  width: 4px;
+  height: 4px;
+}
+
+@keyframes bob {
+  0%, 100% { opacity: 0.3; transform: translateY(0); }
+  50%      { opacity: 1;   transform: translateY(-3px); }
+}
+
+@keyframes mark-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loader__mark { animation: none; }
+  .dots span { animation: none; opacity: 0.55; }
+}
+
+/* ---- page shell -------------------------------------------------
+   One container for every screen. Comfortable on a small phone,
+   breathes a little on a tablet, and never grows into an unreadable
+   line length on a wide monitor.
+------------------------------------------------------------------ */
+
+.page {
+  width: 100%;
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 20px 18px calc(72px + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 480px) {
+  .page { padding-left: 24px; padding-right: 24px; }
+}
+
+@media (min-width: 768px) {
+  .page {
+    max-width: 38rem;
+    padding-top: 40px;
+    padding-left: 28px;
+    padding-right: 28px;
+  }
+}
+
+/* Sign-in and sign-up sit centred in the viewport */
+.page--auth {
+  display: flex;
+  min-height: 100dvh;
+  max-width: 26rem;
+  flex-direction: column;
+  justify-content: center;
+  padding-bottom: calc(40px + env(safe-area-inset-bottom));
+}
+
+/* The one number the whole app exists to show */
+.hero {
+  font-size: clamp(2.1rem, 11vw, 3.1rem);
+}
+
+/* Give the sheet room on short screens rather than letting it overflow */
+@media (max-height: 620px) {
+  .sheet {
+    max-height: 88dvh;
+    overflow-y: auto;
+  }
+}
+
+/* Theme switch on the signed-out screens, clear of notches and rounded
+   corners on phones */
+.theme-corner {
+  position: fixed;
+  top: calc(14px + env(safe-area-inset-top));
+  right: calc(18px + env(safe-area-inset-right));
+  z-index: 10;
+}

@@ -1,6 +1,7 @@
 export type Profile = {
   id: string;
   username: string;
+  display_name: string | null;
   default_due_amount: number;
   year_start: string | null;
   sheet_id: string | null;
@@ -20,6 +21,8 @@ export type Payment = {
   amount: number;
   paid_on: string;
   description: string | null;
+  device: string | null;
+  created_at: string;
 };
 
 /** Usernames double as the login handle, so they need a stable e-mail form. */

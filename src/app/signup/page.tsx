@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import ThemeToggle from "@/components/ThemeToggle";
+import Loader from "@/components/Loader";
 import { emailFor } from "@/lib/types";
 
 const NAME_RULE = /^[a-z0-9_]{3,24}$/;
@@ -15,6 +16,7 @@ export default function SignUp() {
   const router = useRouter();
   const supabase = createClient();
 
+  const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -43,7 +45,11 @@ export default function SignUp() {
 
   const mismatch = confirm.length > 0 && password !== confirm;
   const ready =
-    nameState === "free" && password.length >= 8 && password === confirm && !busy;
+    name.trim().length > 0 &&
+    nameState === "free" &&
+    password.length >= 8 &&
+    password === confirm &&
+    !busy;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -51,11 +57,11 @@ export default function SignUp() {
     setBusy(true);
     setError(null);
 
-    const name = username.trim().toLowerCase();
+    const handle = username.trim().toLowerCase();
     const { error } = await supabase.auth.signUp({
-      email: emailFor(name),
+      email: emailFor(handle),
       password,
-      options: { data: { username: name } },
+      options: { data: { username: handle, display_name: name.trim() } },
     });
 
     if (error) {
@@ -81,8 +87,8 @@ export default function SignUp() {
   };
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-[26rem] flex-col justify-center px-5 py-12">
-      <div className="absolute right-5 top-5"><ThemeToggle /></div>
+    <main className="page page--auth">
+      <div className="theme-corner"><ThemeToggle /></div>
       <h1 className="font-medium tracking-tight text-[2.1rem] leading-tight">
         Start your ledger
       </h1>
@@ -91,6 +97,24 @@ export default function SignUp() {
       </p>
 
       <form onSubmit={submit} className="mt-8 space-y-5">
+        <div>
+          <label htmlFor="name" className="mb-1.5 block text-sm font-semibold">
+            Your name
+          </label>
+          <input
+            id="name"
+            className="field"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoComplete="given-name"
+            maxLength={40}
+            required
+          />
+          <p className="mt-1.5 text-[13px] text-muted">
+            What the app calls you. Change it any time in settings.
+          </p>
+        </div>
+
         <div>
           <label htmlFor="username" className="mb-1.5 block text-sm font-semibold">
             Username
@@ -166,7 +190,7 @@ export default function SignUp() {
         )}
 
         <button type="submit" className="btn btn--solid w-full" disabled={!ready}>
-          {busy ? "Creating…" : "Create account"}
+          {busy ? <Loader variant="inline" /> : "Create account"}
         </button>
       </form>
 

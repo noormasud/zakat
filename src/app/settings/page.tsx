@@ -4,11 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import type { Profile } from "@/lib/types";
-import { longDate } from "@/lib/format";
+import { emailFor, type Profile } from "@/lib/types";
+import ThemeToggle from "@/components/ThemeToggle";
+import Loader from "@/components/Loader";
 
 const SERVICE_ACCOUNT =
-  process.env.NEXT_PUBLIC_GOOGLE_SA_EMAIL ?? "your-service-account@…iam.gserviceaccount.com";
+  process.env.NEXT_PUBLIC_GOOGLE_SA_EMAIL ??
+  "your-service-account@…iam.gserviceaccount.com";
 
 /** Accepts a full Sheets URL or a bare ID and returns the ID. */
 function toSheetId(input: string) {
@@ -21,11 +23,17 @@ export default function Settings() {
   const supabase = useMemo(() => createClient(), []);
 
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [name, setName] = useState("");
+  const [nameNote, setNameNote] = useState<string | null>(null);
   const [sheet, setSheet] = useState("");
-  const [saved, setSaved] = useState(false);
-  const [password, setPassword] = useState("");
+  const [sheetNote, setSheetNote] = useState<string | null>(null);
+
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
   const [pwNote, setPwNote] = useState<string | null>(null);
+  const [pwOk, setPwOk] = useState(false);
+  const [pwBusy, setPwBusy] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -37,25 +45,68 @@ export default function Settings() {
         .eq("id", auth.user.id)
         .single();
       setProfile(data as Profile);
+      setName(data?.display_name ?? "");
       setSheet(data?.sheet_id ?? "");
     })();
   }, [supabase, router]);
 
-  async function saveSheet() {
-    const id = sheet ? toSheetId(sheet) : null;
-    await supabase.from("profiles").update({ sheet_id: id }).eq("id", profile!.id);
-    setSheet(id ?? "");
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+  async function saveName() {
+    if (!profile) return;
+    const value = name.trim();
+    if (!value) return setNameNote("Enter a name.");
+    await supabase
+      .from("profiles")
+      .update({ display_name: value })
+      .eq("id", profile.id);
+    setProfile({ ...profile, display_name: value });
+    setNameNote("Saved.");
+    setTimeout(() => setNameNote(null), 2500);
   }
 
+  async function saveSheet() {
+    if (!profile) return;
+    const id = sheet ? toSheetId(sheet) : null;
+    await supabase.from("profiles").update({ sheet_id: id }).eq("id", profile.id);
+    setSheet(id ?? "");
+    setSheetNote(id ? "Saved." : "Disconnected.");
+    setTimeout(() => setSheetNote(null), 2500);
+  }
+
+  /**
+   * Supabase will change a password for anyone holding a live session, so it
+   * never asks for the old one. We re-authenticate first, otherwise a stranger
+   * at an unlocked laptop could lock the owner out.
+   */
   async function changePassword() {
-    if (password.length < 8) return setPwNote("Use at least 8 characters.");
-    if (password !== confirm) return setPwNote("The two passwords do not match.");
-    const { error } = await supabase.auth.updateUser({ password });
-    setPwNote(error ? error.message : "Password changed.");
-    setPassword("");
+    if (!profile) return;
+    setPwOk(false);
+
+    if (!current) return setPwNote("Enter your current password.");
+    if (next.length < 8) return setPwNote("The new password needs at least 8 characters.");
+    if (next !== confirm) return setPwNote("The two new passwords do not match.");
+    if (next === current) return setPwNote("That is already your password.");
+
+    setPwBusy(true);
+    const { error: wrong } = await supabase.auth.signInWithPassword({
+      email: emailFor(profile.username),
+      password: current,
+    });
+
+    if (wrong) {
+      setPwBusy(false);
+      return setPwNote("That is not your current password.");
+    }
+
+    const { error } = await supabase.auth.updateUser({ password: next });
+    setPwBusy(false);
+
+    if (error) return setPwNote(error.message);
+
+    setCurrent("");
+    setNext("");
     setConfirm("");
+    setPwOk(true);
+    setPwNote("Password changed.");
   }
 
   async function signOut() {
@@ -65,45 +116,59 @@ export default function Settings() {
 
   if (!profile) {
     return (
-      <main className="mx-auto max-w-[34rem] px-5 py-16">
-        <p className="text-[15px] text-muted">Loading…</p>
-      </main>
+      <main><Loader /></main>
     );
   }
 
   return (
-    <main className="mx-auto w-full max-w-[34rem] px-5 pb-24 pt-6">
-      <Link href="/dashboard" className="text-[14px] underline">
-        Back to ledger
-      </Link>
+    <main className="page">
+      <div className="flex items-center justify-between">
+        <Link href="/dashboard" className="text-[13px] text-muted hover:text-ink">
+          ‹ Back
+        </Link>
+        <ThemeToggle />
+      </div>
 
-      <h1 className="mt-5 font-medium tracking-tight text-[2rem] leading-tight">Settings</h1>
+      <h1 className="mt-5 text-[1.75rem] font-medium tracking-tight">Settings</h1>
 
       <section className="rule mt-7 pt-6">
-        <h2 className="font-medium tracking-tight text-[1.3rem]">Account</h2>
-        <p className="mt-2 text-[15px]">
-          <span className="text-muted">Username</span>{" "}
-          <span className="font-semibold">{profile.username}</span>
+        <h2 className="text-[1.05rem] font-medium">Your name</h2>
+        <p className="mt-1.5 text-[13px] text-muted">
+          What the app calls you at the top of the ledger.
         </p>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <input
+            className="field"
+            value={name}
+            maxLength={40}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <button className="btn btn--solid whitespace-nowrap" onClick={saveName}>
+            Save name
+          </button>
+        </div>
+        {nameNote && <p className="mt-2 text-[13px] text-muted">{nameNote}</p>}
+      </section>
+
+      <section className="rule mt-7 pt-6">
+        <h2 className="text-[1.05rem] font-medium">Username</h2>
+        <p className="mt-1.5 text-[15px] font-medium">{profile.username}</p>
         <p className="mt-1 text-[13px] text-muted">
-          Permanent, and unique to you.
-          {profile.year_start
-            ? ` Your first Zakat year began ${longDate(profile.year_start)}.`
-            : ""}
+          This is how you sign in. It is permanent and cannot be changed.
         </p>
       </section>
 
       <section className="rule mt-7 pt-6">
-        <h2 className="font-medium tracking-tight text-[1.3rem]">Mirror to a Google Sheet</h2>
-        <p className="mt-2 text-[15px] leading-relaxed text-muted">
+        <h2 className="text-[1.05rem] font-medium">Mirror to a Google Sheet</h2>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
           Every entry you record is written to your own spreadsheet within a few
           seconds. Edits and deletions are mirrored too.
         </p>
-        <ol className="mt-3 list-decimal space-y-1 pl-5 text-[14px] leading-relaxed text-muted">
+        <ol className="mt-3 list-decimal space-y-1 pl-5 text-[13px] leading-relaxed text-muted">
           <li>Create a Google Sheet.</li>
           <li>
             Share it, with Editor access, to{" "}
-            <span className="break-all font-semibold text-ink">{SERVICE_ACCOUNT}</span>
+            <span className="break-all font-medium text-ink">{SERVICE_ACCOUNT}</span>
           </li>
           <li>Paste the sheet link below.</li>
         </ol>
@@ -120,46 +185,80 @@ export default function Settings() {
           </button>
           {sheet && (
             <button
-              className="text-[14px] underline"
+              className="text-[13px] text-muted hover:text-ink"
               onClick={() => {
                 setSheet("");
-                supabase.from("profiles").update({ sheet_id: null }).eq("id", profile.id);
+                saveSheet();
               }}
             >
               Disconnect
             </button>
           )}
-          {saved && (
-            <span className="text-[14px]" style={{ color: "var(--ok)" }}>
-              Saved
+          {sheetNote && (
+            <span className="text-[13px]" style={{ color: "var(--ok)" }}>
+              {sheetNote}
             </span>
           )}
         </div>
       </section>
 
       <section className="rule mt-7 pt-6">
-        <h2 className="font-medium tracking-tight text-[1.3rem]">Change password</h2>
+        <h2 className="text-[1.05rem] font-medium">Change password</h2>
         <div className="mt-3 space-y-3">
-          <input
-            className="field"
-            type="password"
-            placeholder="New password"
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          <input
-            className="field"
-            type="password"
-            placeholder="Confirm new password"
-            autoComplete="new-password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-          />
-          <button className="btn btn--solid w-full" onClick={changePassword}>
-            Change password
+          <div>
+            <label className="label" htmlFor="cur">
+              Current password
+            </label>
+            <input
+              id="cur"
+              className="field"
+              type="password"
+              autoComplete="current-password"
+              value={current}
+              onChange={(e) => setCurrent(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="label" htmlFor="new">
+              New password
+            </label>
+            <input
+              id="new"
+              className="field"
+              type="password"
+              autoComplete="new-password"
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="label" htmlFor="conf">
+              Confirm new password
+            </label>
+            <input
+              id="conf"
+              className="field"
+              type="password"
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+            />
+          </div>
+          <button
+            className="btn btn--solid w-full"
+            onClick={changePassword}
+            disabled={pwBusy}
+          >
+            {pwBusy ? <Loader variant="inline" /> : "Change password"}
           </button>
-          {pwNote && <p className="text-[14px] text-muted">{pwNote}</p>}
+          {pwNote && (
+            <p
+              className="text-[13px]"
+              style={{ color: pwOk ? "var(--ok)" : "var(--pend)" }}
+            >
+              {pwNote}
+            </p>
+          )}
         </div>
       </section>
 

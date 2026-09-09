@@ -133,9 +133,9 @@ Deno.serve(async (req) => {
         .eq("user_id", userId),
       admin
         .from("payments")
-        .select("year_id, amount, paid_on, description, created_at")
+        .select("year_id, amount, paid_on, description, device, created_at")
         .eq("user_id", userId)
-        .order("paid_on", { ascending: true }),
+        .order("paid_on", { ascending: false }),
     ]);
 
     const yearById = new Map((years ?? []).map((y) => [y.id, y]));
@@ -148,6 +148,7 @@ Deno.serve(async (req) => {
       "Amount (PKR)",
       "Given to",
       "Recorded at",
+      "Recorded from",
     ];
 
     const body = (payments ?? []).map((p) => {
@@ -160,6 +161,7 @@ Deno.serve(async (req) => {
         Number(p.amount),
         p.description ?? "",
         new Date(p.created_at).toISOString(),
+        p.device ?? "",
       ];
     });
 
@@ -167,7 +169,7 @@ Deno.serve(async (req) => {
     await ensureTab(profile.sheet_id, token);
 
     // Clear then rewrite, so removed entries actually disappear.
-    await sheets(`/${profile.sheet_id}/values/${TAB}!A:G:clear`, token, { method: "POST" });
+    await sheets(`/${profile.sheet_id}/values/${TAB}!A:H:clear`, token, { method: "POST" });
     await sheets(
       `/${profile.sheet_id}/values/${TAB}!A1?valueInputOption=USER_ENTERED`,
       token,
