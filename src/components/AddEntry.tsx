@@ -140,7 +140,7 @@ export default function AddEntry({
           ))}
         </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor="paid-on">
               Date given
