@@ -223,6 +223,12 @@ export default function Dashboard() {
         )}
       </div>
 
+      {selected && (
+        <div className="mt-6">
+          <AddEntry year={selected} onSave={addPayment} />
+        </div>
+      )}
+
       <div className="rule mt-7 pt-5">
         {editingDue ? (
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -272,11 +278,6 @@ export default function Dashboard() {
         </p>
       </div>
 
-      {selected && (
-        <div className="mt-8">
-          <AddEntry year={selected} onSave={addPayment} />
-        </div>
-      )}
 
       <div className="mt-10">
         <EntryList
