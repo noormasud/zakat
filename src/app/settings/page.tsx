@@ -12,6 +12,13 @@ const SERVICE_ACCOUNT =
   process.env.NEXT_PUBLIC_GOOGLE_SA_EMAIL ??
   "your-service-account@…iam.gserviceaccount.com";
 
+/**
+ * The mirror only appears once the Edge Function is actually deployed.
+ * Set NEXT_PUBLIC_SHEETS_SYNC=on to switch it back on — the database
+ * column, the function and the settings panel are all still here.
+ */
+const SHEETS_SYNC_ENABLED = process.env.NEXT_PUBLIC_SHEETS_SYNC === "on";
+
 /** Accepts a full Sheets URL or a bare ID and returns the ID. */
 function toSheetId(input: string) {
   const match = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
@@ -158,49 +165,51 @@ export default function Settings() {
         </p>
       </section>
 
-      <section className="rule mt-7 pt-6">
-        <h2 className="text-[1.05rem] font-medium">Mirror to a Google Sheet</h2>
-        <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
-          Every entry you record is written to your own spreadsheet within a few
-          seconds. Edits and deletions are mirrored too.
-        </p>
-        <ol className="mt-3 list-decimal space-y-1 pl-5 text-[13px] leading-relaxed text-muted">
-          <li>Create a Google Sheet.</li>
-          <li>
-            Share it, with Editor access, to{" "}
-            <span className="break-all font-medium text-ink">{SERVICE_ACCOUNT}</span>
-          </li>
-          <li>Paste the sheet link below.</li>
-        </ol>
+      {SHEETS_SYNC_ENABLED && (
+        <section className="rule mt-7 pt-6">
+          <h2 className="text-[1.05rem] font-medium">Mirror to a Google Sheet</h2>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
+            Every entry you record is written to your own spreadsheet within a few
+            seconds. Edits and deletions are mirrored too.
+          </p>
+          <ol className="mt-3 list-decimal space-y-1 pl-5 text-[13px] leading-relaxed text-muted">
+            <li>Create a Google Sheet.</li>
+            <li>
+              Share it, with Editor access, to{" "}
+              <span className="break-all font-medium text-ink">{SERVICE_ACCOUNT}</span>
+            </li>
+            <li>Paste the sheet link below.</li>
+          </ol>
 
-        <input
-          className="field mt-4"
-          placeholder="https://docs.google.com/spreadsheets/d/…"
-          value={sheet}
-          onChange={(e) => setSheet(e.target.value)}
-        />
-        <div className="mt-3 flex items-center gap-3">
-          <button className="btn btn--solid" onClick={saveSheet}>
-            Save sheet
-          </button>
-          {sheet && (
-            <button
-              className="text-[13px] text-muted hover:text-ink"
-              onClick={() => {
-                setSheet("");
-                saveSheet();
-              }}
-            >
-              Disconnect
+          <input
+            className="field mt-4"
+            placeholder="https://docs.google.com/spreadsheets/d/…"
+            value={sheet}
+            onChange={(e) => setSheet(e.target.value)}
+          />
+          <div className="mt-3 flex items-center gap-3">
+            <button className="btn btn--solid" onClick={saveSheet}>
+              Save sheet
             </button>
-          )}
-          {sheetNote && (
-            <span className="text-[13px]" style={{ color: "var(--ok)" }}>
-              {sheetNote}
-            </span>
-          )}
-        </div>
-      </section>
+            {sheet && (
+              <button
+                className="text-[13px] text-muted hover:text-ink"
+                onClick={() => {
+                  setSheet("");
+                  saveSheet();
+                }}
+              >
+                Disconnect
+              </button>
+            )}
+            {sheetNote && (
+              <span className="text-[13px]" style={{ color: "var(--ok)" }}>
+                {sheetNote}
+              </span>
+            )}
+          </div>
+        </section>
+      )}
 
       <section className="rule mt-7 pt-6">
         <h2 className="text-[1.05rem] font-medium">Change password</h2>

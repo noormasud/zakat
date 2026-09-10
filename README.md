@@ -56,7 +56,11 @@ amount due, and you are tracking.
 
 ---
 
-## 4. Google Sheets mirror (optional)
+## 4. Google Sheets mirror (optional, off by default)
+
+The panel for this is hidden unless `NEXT_PUBLIC_SHEETS_SYNC=on` is set, so
+nobody is offered a feature that has no function behind it. Work through the
+steps below, then add that variable last.
 
 The sync is per account: each user links their own sheet, and the function only
 ever writes that user's rows.
