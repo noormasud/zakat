@@ -6,13 +6,13 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import type { Payment, Profile, ZakatYear } from "@/lib/types";
 import { rupees, plainNumber, longDate, yearRange, yearTag, todayIso } from "@/lib/format";
-import { downloadWorkbook } from "@/lib/excel";
 import { describeDevice } from "@/lib/device";
 import YearMeter from "@/components/YearMeter";
 import AddEntry from "@/components/AddEntry";
 import EntryList from "@/components/EntryList";
 import ThemeToggle from "@/components/ThemeToggle";
 import Loader from "@/components/Loader";
+import Sheet from "@/components/Sheet";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -24,6 +24,7 @@ export default function Dashboard() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [rolledOver, setRolledOver] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [pickingYear, setPickingYear] = useState(false);
   const [editingDue, setEditingDue] = useState(false);
   const [dueDraft, setDueDraft] = useState("");
 
@@ -65,6 +66,26 @@ export default function Dashboard() {
   const isCurrent = !!selected && selected.id === currentYear?.id;
   const isClosed = !!selected && selected.end_date < today;
 
+  const givenIn = useCallback(
+    (yearId: string) =>
+      payments
+        .filter((p) => p.year_id === yearId)
+        .reduce((sum, p) => sum + Number(p.amount), 0),
+    [payments]
+  );
+
+  /** Net of every year before this one. Negative means a shortfall. */
+  const carryInto = useCallback(
+    (yearNumber: number) =>
+      years
+        .filter((y) => y.year_number < yearNumber)
+        .reduce(
+          (net, y) => net + givenIn(y.id) - Number(y.due_amount),
+          0
+        ),
+    [years, givenIn]
+  );
+
   const yearPayments = useMemo(
     () =>
       payments
@@ -100,10 +121,13 @@ export default function Dashboard() {
     setPayments((prev) => prev.filter((p) => p.id !== id));
   }
 
-  async function editNote(id: string, note: string) {
-    await supabase.from("payments").update({ description: note || null }).eq("id", id);
+  async function updatePayment(
+    id: string,
+    changes: { amount: number; paid_on: string; description: string | null }
+  ) {
+    await supabase.from("payments").update(changes).eq("id", id);
     setPayments((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, description: note || null } : p))
+      prev.map((p) => (p.id === id ? { ...p, ...changes } : p))
     );
   }
 
@@ -113,21 +137,6 @@ export default function Dashboard() {
     await supabase.rpc("set_due_amount", { p_amount: value });
     setEditingDue(false);
     await load();
-  }
-
-  function exportExcel() {
-    if (!profile) return;
-    downloadWorkbook(
-      profile.display_name || profile.username,
-      [...years]
-        .sort((a, b) => a.year_number - b.year_number)
-        .map((year) => ({
-          year,
-          payments: payments
-            .filter((p) => p.year_id === year.id)
-            .sort((a, b) => a.paid_on.localeCompare(b.paid_on)),
-        }))
-    );
   }
 
   if (loading) {
@@ -149,17 +158,29 @@ export default function Dashboard() {
           <p className="truncate text-[17px] font-medium sm:text-[18px]">
             {profile?.display_name || profile?.username}
           </p>
-          {selected && (
-            <p className="mt-0.5 text-[11px] text-muted sm:text-[12px]">
-              Zakat year · {yearRange(selected.start_date, selected.end_date)}
-            </p>
-          )}
+          {selected &&
+            (years.length > 1 ? (
+              <button
+                type="button"
+                className="year-pick mt-0.5"
+                onClick={() => setPickingYear(true)}
+              >
+                {yearRange(selected.start_date, selected.end_date)}
+                <span className="chevron" aria-hidden>
+                  ⌄
+                </span>
+              </button>
+            ) : (
+              <p className="mt-0.5 text-[11px] text-muted sm:text-[12px]">
+                Zakat year · {yearRange(selected.start_date, selected.end_date)}
+              </p>
+            ))}
         </div>
         <nav className="flex shrink-0 items-center gap-3.5 text-[13px] text-muted">
           <ThemeToggle />
-          <button onClick={exportExcel} className="hover:text-ink">
-            Export
-          </button>
+          <Link href="/calculator" className="hover:text-ink">
+            Calculator
+          </Link>
           <Link
             href="/settings"
             aria-label="Settings"
@@ -196,30 +217,14 @@ export default function Dashboard() {
         </div>
       )}
 
-      {years.length > 1 && (
-        <div className="mt-6">
-          <label htmlFor="year" className="mb-1.5 block text-sm font-semibold">
-            Showing
-          </label>
-          <select
-            id="year"
-            className="field"
-            value={selected?.id}
-            onChange={(e) => setSelectedId(e.target.value)}
-          >
-            {years.map((y) => (
-              <option key={y.id} value={y.id}>
-                {yearTag(y.start_date, y.end_date)} — {yearRange(y.start_date, y.end_date)}
-                {y.id === currentYear?.id ? " (current)" : ""}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
       <div className="mt-7">
         {selected && (
-          <YearMeter year={selected} given={given} isCurrent={isCurrent} />
+          <YearMeter
+            year={selected}
+            given={given}
+            carryIn={carryInto(selected.year_number)}
+            isCurrent={isCurrent}
+          />
         )}
       </div>
 
@@ -279,12 +284,60 @@ export default function Dashboard() {
       </div>
 
 
-      <div className="mt-10">
-        <EntryList
-          payments={yearPayments}
-          onDelete={deletePayment}
-          onEditNote={editNote}
-        />
+      <Sheet
+        open={pickingYear}
+        onClose={() => setPickingYear(false)}
+        title="Which year"
+      >
+        <ul>
+          {years.map((y) => {
+            const chosen = y.id === selected?.id;
+            return (
+              <li key={y.id} className="rule">
+                <button
+                  type="button"
+                  className="row"
+                  onClick={() => {
+                    setSelectedId(y.id);
+                    setPickingYear(false);
+                  }}
+                >
+                  <span className="min-w-0">
+                    <span className="block text-[15px] font-medium">
+                      {yearTag(y.start_date, y.end_date)}
+                      {y.id === currentYear?.id ? " · current" : ""}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[12px] text-muted">
+                      {yearRange(y.start_date, y.end_date)}
+                    </span>
+                  </span>
+                  {chosen && (
+                    <span className="text-[13px]" style={{ color: "var(--ok)" }}>
+                      Showing
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        <button
+          className="btn btn--ghost mt-2 w-full"
+          onClick={() => setPickingYear(false)}
+        >
+          Close
+        </button>
+      </Sheet>
+
+      <div className="mt-8">
+        {selected && (
+          <EntryList
+            year={selected}
+            payments={yearPayments}
+            onDelete={deletePayment}
+            onUpdate={updatePayment}
+          />
+        )}
       </div>
     </main>
   );

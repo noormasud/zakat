@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { emailFor, type Profile } from "@/lib/types";
+import { emailFor, type Payment, type Profile, type ZakatYear } from "@/lib/types";
+import { longDate } from "@/lib/format";
+import { downloadWorkbook } from "@/lib/excel";
 import ThemeToggle from "@/components/ThemeToggle";
 import Loader from "@/components/Loader";
 
@@ -35,6 +37,15 @@ export default function Settings() {
   const [sheet, setSheet] = useState("");
   const [sheetNote, setSheetNote] = useState<string | null>(null);
 
+  const [years, setYears] = useState<ZakatYear[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [earliest, setEarliest] = useState<ZakatYear | null>(null);
+  const [prevStart, setPrevStart] = useState("");
+  const [prevDue, setPrevDue] = useState("");
+  const [prevPaid, setPrevPaid] = useState("");
+  const [prevNote, setPrevNote] = useState<string | null>(null);
+  const [prevBusy, setPrevBusy] = useState(false);
+
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -54,6 +65,23 @@ export default function Settings() {
       setProfile(data as Profile);
       setName(data?.display_name ?? "");
       setSheet(data?.sheet_id ?? "");
+
+      const [{ data: yrs }, { data: pays }] = await Promise.all([
+        supabase.from("zakat_years").select("*").order("start_date"),
+        supabase.from("payments").select("*").order("paid_on"),
+      ]);
+
+      const list = (yrs ?? []) as ZakatYear[];
+      setYears(list);
+      setPayments((pays ?? []) as Payment[]);
+
+      const first = list[0];
+      if (first) {
+        setEarliest(first);
+        const before = new Date(`${first.start_date}T00:00:00`);
+        before.setDate(before.getDate() - 365);
+        setPrevStart(before.toLocaleDateString("en-CA"));
+      }
     })();
   }, [supabase, router]);
 
@@ -116,6 +144,67 @@ export default function Settings() {
     setPwNote("Password changed.");
   }
 
+  /** Adds a year immediately before the earliest one on record. */
+  async function addEarlierYear() {
+    const due = Number(prevDue.replace(/[^\d]/g, "")) || 0;
+    const paid = Number(prevPaid.replace(/[^\d]/g, "")) || 0;
+    if (!prevStart) return setPrevNote("Pick the date that year started.");
+
+    const clash = years.find(
+      (y) => prevStart >= y.start_date && prevStart <= y.end_date
+    );
+    if (clash) {
+      return setPrevNote(
+        `That date already falls inside the year running ${longDate(
+          clash.start_date
+        )} to ${longDate(clash.end_date)}. You can change its figures from the ledger — switch to it using the date under your name, then edit the amount due or its entries.`
+      );
+    }
+
+    const overlapsAfter = years.find((y) => {
+      const end = new Date(
+        new Date(`${prevStart}T00:00:00`).getTime() + 364 * 86400000
+      ).toLocaleDateString("en-CA");
+      return y.start_date >= prevStart && y.start_date <= end;
+    });
+    if (overlapsAfter) {
+      return setPrevNote(
+        `A year starting then would run into the one that begins ${longDate(
+          overlapsAfter.start_date
+        )}. Choose an earlier date.`
+      );
+    }
+
+    if (due === 0 && paid === 0) return setPrevNote("Enter what was due, what was paid, or both.");
+
+    setPrevBusy(true);
+    const { error } = await supabase.rpc("add_previous_year", {
+      p_start: prevStart,
+      p_due: due,
+      p_paid: paid,
+    });
+    setPrevBusy(false);
+
+    if (error) return setPrevNote(error.message);
+    setPrevDue("");
+    setPrevPaid("");
+    setPrevNote("Added. It will appear in the year list on your ledger.");
+    router.refresh();
+  }
+
+  function exportExcel() {
+    if (!profile) return;
+    downloadWorkbook(
+      profile.display_name || profile.username,
+      years.map((year) => ({
+        year,
+        payments: payments
+          .filter((p) => p.year_id === year.id)
+          .sort((a, b) => a.paid_on.localeCompare(b.paid_on)),
+      }))
+    );
+  }
+
   async function signOut() {
     await supabase.auth.signOut();
     router.replace("/login");
@@ -143,14 +232,14 @@ export default function Settings() {
         <p className="mt-1.5 text-[13px] text-muted">
           What the app calls you at the top of the ledger.
         </p>
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <div className="inline-row mt-3">
           <input
             className="field"
             value={name}
             maxLength={40}
             onChange={(e) => setName(e.target.value)}
           />
-          <button className="btn btn--solid whitespace-nowrap" onClick={saveName}>
+          <button className="btn btn--solid btn--inline" onClick={saveName}>
             Save name
           </button>
         </div>
@@ -210,6 +299,92 @@ export default function Settings() {
           </div>
         </section>
       )}
+
+      <section className="rule mt-7 pt-6">
+        <h2 className="text-[1.05rem] font-medium">Export</h2>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
+          An Excel workbook with a summary, every entry across all years, and a
+          tab for each year on its own.
+        </p>
+        <button className="btn btn--quiet mt-3 w-full" onClick={exportExcel}>
+          Download spreadsheet
+        </button>
+      </section>
+
+      <section className="rule mt-7 pt-6">
+        <h2 className="text-[1.05rem] font-medium">Add an earlier year</h2>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
+          For years before you started using this app. A shortfall is added to
+          what the following year owes; an excess counts as already given
+          against it.
+        </p>
+
+        <div className="mt-3">
+          <label className="label" htmlFor="prev-start">
+            That year started on
+          </label>
+          <input
+            id="prev-start"
+            type="date"
+            className="field"
+            value={prevStart}
+            max={earliest ? earliest.start_date : undefined}
+            onChange={(e) => setPrevStart(e.target.value)}
+          />
+          <p className="mt-1.5 text-[12px] text-muted">
+            {prevStart
+              ? `Runs to ${longDate(
+                  new Date(
+                    new Date(`${prevStart}T00:00:00`).getTime() + 364 * 86400000
+                  ).toLocaleDateString("en-CA")
+                )}.`
+              : "Pick a date."}
+            {earliest
+              ? ` It has to finish before your current earliest year, which starts ${longDate(
+                  earliest.start_date
+                )}.`
+              : ""}
+          </p>
+        </div>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="label" htmlFor="prev-due">
+              Zakat that was due
+            </label>
+            <input
+              id="prev-due"
+              className="field"
+              inputMode="numeric"
+              placeholder="0"
+              value={prevDue}
+              onChange={(e) => setPrevDue(e.target.value.replace(/[^\d]/g, ""))}
+            />
+          </div>
+          <div>
+            <label className="label" htmlFor="prev-paid">
+              Amount already paid
+            </label>
+            <input
+              id="prev-paid"
+              className="field"
+              inputMode="numeric"
+              placeholder="0"
+              value={prevPaid}
+              onChange={(e) => setPrevPaid(e.target.value.replace(/[^\d]/g, ""))}
+            />
+          </div>
+        </div>
+
+        <button
+          className="btn btn--solid mt-3 w-full"
+          onClick={addEarlierYear}
+          disabled={prevBusy}
+        >
+          {prevBusy ? <Loader variant="inline" /> : "Add the year"}
+        </button>
+        {prevNote && <p className="mt-2 text-[13px] text-muted">{prevNote}</p>}
+      </section>
 
       <section className="rule mt-7 pt-6">
         <h2 className="text-[1.05rem] font-medium">Change password</h2>

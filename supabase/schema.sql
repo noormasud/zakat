@@ -251,3 +251,6 @@ grant execute on function public.username_available(text)  to anon, authenticate
 grant execute on function public.start_tracking(date, numeric) to authenticated;
 grant execute on function public.ensure_current_year()     to authenticated;
 grant execute on function public.set_due_amount(numeric)   to authenticated;
+
+-- See migrations-003-calculator-and-earlier-years.sql for the assets
+-- table and add_previous_year(). Run it after this file.
